@@ -1,0 +1,48 @@
+rules_version = '2';
+// H&Z Finans — Firestore güvenlik kuralları
+// Firebase konsolu → Firestore Database → Rules sekmesine olduğu gibi yapıştır → Publish.
+//
+// · Uygulamaya ilk giren kişi yöneticidir (meta/kurulum belgesi bir kez yazılır, sonra değişmez).
+// · Kaydolan herkes "onay bekliyor" olarak başlar; verileri yalnızca yönetici ve onayladığı kişiler görür.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function girisli() { return request.auth != null; }
+    function kurulum() { return /databases/$(database)/documents/meta/kurulum; }
+    function profil(uid) { return /databases/$(database)/documents/kullanicilar/$(uid); }
+    function yonetici() {
+      return girisli() && exists(kurulum()) && get(kurulum()).data.yonetici == request.auth.uid;
+    }
+    function onayli() {
+      return yonetici() ||
+        (girisli() && exists(profil(request.auth.uid)) && get(profil(request.auth.uid)).data.onay == true);
+    }
+
+    // İlk yönetici: belge yoksa giriş yapan kişi kendini yazabilir; sonra kimse değiştiremez.
+    match /meta/kurulum {
+      allow read: if girisli();
+      allow create: if girisli()
+        && request.resource.data.keys().hasOnly(['yonetici', 'at'])
+        && request.resource.data.yonetici == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Kullanıcılar: herkes kendi kaydını "onaysız üye" olarak açar; onayı yalnızca yönetici verir.
+    match /kullanicilar/{uid} {
+      allow read: if girisli() && (request.auth.uid == uid || yonetici());
+      allow create: if girisli() && request.auth.uid == uid
+        && request.resource.data.onay == false
+        && request.resource.data.rol == 'uye';
+      allow update: if yonetici()
+        || (girisli() && request.auth.uid == uid
+            && request.resource.data.onay == resource.data.onay
+            && request.resource.data.rol == resource.data.rol);
+      allow delete: if yonetici();
+    }
+
+    // Uygulama verisi: yalnızca onaylı kullanıcılar okur ve yazar.
+    match /{koleksiyon}/{belge} {
+      allow read, write: if koleksiyon in ['config', 'cards', 'recurring', 'plans', 'imports', 'tx'] && onayli();
+    }
+  }
+}
