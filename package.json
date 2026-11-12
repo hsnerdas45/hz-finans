@@ -1,0 +1,20 @@
+{
+  "name": "hz-finans",
+  "version": "7.1.0",
+  "private": true,
+  "description": "H&Z Finans — aile bütçesi: kredi kartı ekstre mutabakatı, ekstre ayı kuralı, taksit ve düzenli ödeme takibi",
+  "scripts": {
+    "build": "node tools/build.js",
+    "serve": "node tools/build.js && node tools/serve.js",
+    "test": "node tests/engine.test.js && node tests/v7.test.js",
+    "test:e2e": "node tools/build.js --test && node tests/e2e.test.js && node tests/e2e-cloud.test.js && node tests/e2e-kapanis.test.js",
+    "test:firebase": "node tools/build.js --test && node tests/e2e-firebase.test.js",
+    "test:hepsi": "npm test && npm run test:e2e && npm run test:firebase"
+  },
+  "devDependencies": {
+    "firebase": "10.14.1",
+    "pdfjs-dist": "3.11.174",
+    "playwright": "1.56.0",
+    "xlsx": "0.18.5"
+  }
+}
