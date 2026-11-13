@@ -65,6 +65,18 @@ const srv = http.createServer((q, r) => { let u = q.url.split('?')[0]; let f = u
   await page.fill('#e2', '2026-11-02'); await E(() => __T.handleAct('txEditSave', { id: 'm2' })); await page.waitForFunction(() => !document.querySelector('.scrim')); await page.waitForTimeout(100);
   d = await E(() => ({ eki: __docs['tx/2026-10'].items.filter(t => t.id === 'm2').length, kas: __docs['tx/2026-11'].items.filter(t => t.id === 'm2').length, tak: __docs['tx/2026-11'].items.filter(t => t.installment).length }));
   ok('kaydı başka aya taşımak: eski aydan çıktı, yeni aya yazıldı, o aydaki taksit duruyor', d.eki === 0 && d.kas === 1 && d.tak === 1, d);
+  /* yedekten yükleme: her yazmadan sonra anlık görüntü gelir; tüm kartlar aktarılmalı */
+  const yedek = JSON.stringify({ v: 3, config: Object.assign({}, SEED.config, { kapanis: { date: '2026-11-12', cards: {}, removed: [], plans: [] } }),
+    cards: SEED.cards.map(c => Object.assign({}, c, { kapanis: '2026-11-12' })), recurring: [], plans: [], imports: [], buckets: SEED.buckets });
+  await E(() => __T.handleAct('importJson', {})); await page.fill('#jsonIn', yedek);
+  await E(() => __T.handleAct('importJsonRun', {})); await page.waitForFunction(() => !document.querySelector('.scrim')); await page.waitForTimeout(200);
+  d = await E(() => ({ db: Object.keys(__docs).filter(p => p.startsWith('cards/')).length, s: __T.S.cards.length, kap: !!__docs['config/app'].kapanis }));
+  ok('bulutta yedekten yükleme: 3 kartın 3\'ü de yazıldı', d.db === 3 && d.s === 3 && d.kap, d);
+  await E(() => __T.handleAct('go', { go: 'ayarlar' }));
+  await E(() => __T.handleAct('kapanisGeriAl', {})); await page.click('[data-act="onayEvet"]');
+  await page.waitForFunction(() => !__docs['config/app'].kapanis); await page.waitForTimeout(200);
+  d = await E(() => Object.keys(__docs).filter(p => p.startsWith('cards/')).map(p => !!__docs[p].kapanis));
+  ok('kapanış geri alınınca 3 kartın 3\'ünden de kalktı', d.length === 3 && d.every(x => !x), d);
   ok('hata yok', errs.length === 0, errs.slice(0, 3));
   console.log('\n' + (n - bad) + '/' + n + ' geçti'); await br.close(); srv.close(); process.exit(bad ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(2); });
