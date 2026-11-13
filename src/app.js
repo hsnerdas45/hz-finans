@@ -2096,12 +2096,15 @@ async function importJsonRun() {
   try { d = JSON.parse(val('jsonIn')); } catch (e) { toast('Geçersiz JSON'); return; }
   if (!d || (!d.buckets && !d.cards && !d.config)) { toast('Bu dosya bir H&Z Finans yedeği değil'); return; }
   /* Yedek, mevcut verinin YERİNE geçer: yedekte olmayan kartlar, tanımlar ve aylar silinir. */
+  /* Listeler yazmadan ÖNCE kopyalanır: bulutta her yazmadan sonra gelen anlık görüntü
+     S[ad]'ı o ana kadar yazılanlarla değiştirir; döngü S[ad] üzerinden dönerse ilk
+     kayıttan sonra durur (yalnızca 1 kart aktarılırdı). */
   async function koleksiyon(ad, yeni) {
-    var eski = S[ad] || [], var_ = {};
-    (yeni || []).forEach(function (x) { var_[x.id] = 1; });
-    S[ad] = yeni || [];
+    var eski = (S[ad] || []).slice(), liste = (yeni || []).slice(), var_ = {};
+    liste.forEach(function (x) { var_[x.id] = 1; });
     for (var i = 0; i < eski.length; i++) if (!var_[eski[i].id]) await Store.del(ad, eski[i].id);
-    for (var j = 0; j < S[ad].length; j++) await Store.put(ad, S[ad][j].id, S[ad][j]);
+    for (var j = 0; j < liste.length; j++) await Store.put(ad, liste[j].id, liste[j]);
+    S[ad] = liste;
   }
   if (d.config) { S.config = d.config; await Store.saveConfig(); }
   await koleksiyon('cards', d.cards);
@@ -2181,21 +2184,25 @@ async function kapanisUygula(tarih, sessiz) {
     if (kalan.length !== arr.length) { S.buckets[mk] = kalan; dokunulan[mk] = 1; }
   }
   await Store.putBuckets(Object.keys(dokunulan));
-  for (var i = 0; i < S.plans.length; i++) {
-    var p = S.plans[i];
+  var planListe = S.plans.slice();
+  for (var i = 0; i < planListe.length; i++) {
+    var p = planListe[i];
     if (!planlar[p.id]) continue;
     kayit.plans.push(p.id);
-    S.plans[i] = Object.assign({}, p, { kapandi: tarih });
-    await Store.put('plans', p.id, S.plans[i]);
+    planListe[i] = Object.assign({}, p, { kapandi: tarih });
+    await Store.put('plans', p.id, planListe[i]);
   }
+  S.plans = planListe;
   /* kartlar: borç bu tarihte sıfır */
-  for (var j = 0; j < S.cards.length; j++) {
-    var c = S.cards[j];
+  var kartlar = S.cards.slice(), yeniKartlar = [];
+  for (var j = 0; j < kartlar.length; j++) {
+    var c = kartlar[j];
     kayit.cards[c.id] = { openingBalance: c.openingBalance || 0 };
     var k = Object.assign({}, c, { kapanis: tarih, openingBalance: 0, kapanisOnce: { openingBalance: c.openingBalance || 0 } });
-    S.cards[j] = k;
+    yeniKartlar.push(k);
     await Store.put('cards', k.id, k);
   }
+  S.cards = yeniKartlar;
   /* bu ayın kaydı: yeni harcamalar ve yüklenecek ekstreler için boş ay açılır */
   var buAy = D.monthKey(D.todayISO());
   if (!S.buckets[buAy]) { S.buckets[buAy] = []; await Store.putBucket(buAy); }
@@ -2216,21 +2223,25 @@ async function kapanisGeriAl(sessiz) {
     S.buckets[bk] = (S.buckets[bk] || []).concat([t]); dokunulan[bk] = 1;
   });
   await Store.putBuckets(Object.keys(dokunulan));
-  for (var i = 0; i < S.plans.length; i++) {
-    if (!S.plans[i].kapandi) continue;
-    var p = Object.assign({}, S.plans[i]); delete p.kapandi;
-    S.plans[i] = p; await Store.put('plans', p.id, p);
+  var planListe = S.plans.slice();
+  for (var i = 0; i < planListe.length; i++) {
+    if (!planListe[i].kapandi) continue;
+    var p = Object.assign({}, planListe[i]); delete p.kapandi;
+    planListe[i] = p; await Store.put('plans', p.id, p);
   }
-  for (var j = 0; j < S.cards.length; j++) {
-    var c = S.cards[j];
+  S.plans = planListe;
+  var kartlar = S.cards.slice();
+  for (var j = 0; j < kartlar.length; j++) {
+    var c = kartlar[j];
     if (!c.kapanis && !c.kapanisOnce) continue;
     var k = Object.assign({}, c);
     var once = (kayit.cards || {})[c.id] || c.kapanisOnce;
     /* kapanıştan sonra ekstre eşitlemesiyle eklenen fark korunur */
     if (once) k.openingBalance = (once.openingBalance || 0) + (c.openingBalance || 0);
     delete k.kapanis; delete k.kapanisOnce;
-    S.cards[j] = k; await Store.put('cards', k.id, k);
+    kartlar[j] = k; await Store.put('cards', k.id, k);
   }
+  S.cards = kartlar;
   delete S.config.kapanis;
   await Store.saveConfig();
   if (!sessiz) { closeModal(); renderAll(); }
@@ -2447,7 +2458,8 @@ async function handleAct(act, ds, ev) {
           S.buckets = Object.assign({}, S.buckets);
           for (var mk in S.buckets) S.buckets[mk] = [];
           await Store.putBuckets(Object.keys(S.buckets));
-          for (var q = 0; q < S.imports.length; q++) await Store.del('imports', S.imports[q].id);
+          var _imps = S.imports.slice();
+          for (var q = 0; q < _imps.length; q++) await Store.del('imports', _imps[q].id);
           S.imports = [];
           S.plans = []; renderAll(); toast('İşlemler silindi');
         }, 'Evet, hepsini sil');
