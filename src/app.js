@@ -365,14 +365,14 @@ function tile(k, v, s, cls, git, filtre) {
 function quickbarHtml() {
   var c = cardById(defaultCardId());
   return '<div class="quickbar">' +
-    '<button class="qbtn" data-act="quickAdd" data-card="' + esc(c ? c.id : '') + '">' +
-      '<b><i></i>Kart harcaması</b><span>' + esc(c ? c.name : 'kart tanımlı değil') + '</span></button>' +
     '<button class="qbtn" data-act="quickAdd" data-method="CASH">' +
       '<b><i style="background:var(--c3)"></i>Nakit harcama</b><span>cepten çıkan para</span></button>' +
+    '<button class="qbtn" data-act="ekstre">' +
+      '<b><i style="background:var(--c4)"></i>Belge yükle</b><span>banka / kart dökümü · PDF ya da fotoğraf</span></button>' +
     '<button class="qbtn" data-act="incomeNew">' +
       '<b><i style="background:var(--ok)"></i>Gelir ekle</b><span>maaş, ek gelir</span></button>' +
-    '<button class="qbtn" data-act="ekstre">' +
-      '<b><i style="background:var(--c4)"></i>Ekstre yükle</b><span>elle girdiklerinle eşleştirir</span></button>' +
+    '<button class="qbtn" data-act="quickAdd" data-card="' + esc(c ? c.id : '') + '">' +
+      '<b><i></i>Kart harcaması</b><span>gerekirse elle · ' + esc(c ? c.name : 'kart tanımlı değil') + '</span></button>' +
   '</div>';
 }
 
@@ -1005,10 +1005,10 @@ function renderAyarlar() {
       '<div style="display:flex;gap:8px;margin-top:11px"><input id="newCat" placeholder="Yeni kategori"><button class="btn" data-act="catAdd">Ekle</button></div>' +
     '</div></div>' +
 
-    '<div class="panel"><div class="panel-h"><h2>Ekstre yükleme</h2>' +
-      '<div class="note">pdf · xlsx · csv</div></div><div class="panel-b">' +
-      '<div class="muted" style="margin-bottom:10px">Ekstreyi yüklediğinde elle girdiğin harcamalar ekstre satırlarıyla eşleştirilir; aynı işlem iki kez yazılmaz. Aynı ekstreyi tekrar yüklersen hiçbir şey eklenmez.</div>' +
-      '<button class="btn pri" data-act="ekstre">Ekstre yükle</button>' +
+    '<div class="panel"><div class="panel-h"><h2>Belge yükleme</h2>' +
+      '<div class="note">pdf · fotoğraf · xlsx · csv</div></div><div class="panel-b">' +
+      '<div class="muted" style="margin-bottom:10px">Bankanın hesap hareketlerini ya da kartının harcama listesini yükle — ekstre kesilmemiş olsa da olur. Fotoğraf ve taranmış PDF de okunur. Daha önce yüklenen işlem ikinci kez yazılmaz; aynı belgeyi tekrar yüklersen hiçbir şey eklenmez.</div>' +
+      '<button class="btn pri" data-act="ekstre">Belge yükle</button>' +
       (S.imports.length ? '<div class="lbl" style="margin:14px 0 4px">Yüklenen ekstreler</div>' +
         S.imports.slice().sort(function (x, y) { return x.at < y.at ? 1 : -1; }).slice(0, 12).map(function (i) {
           var k = cardById(i.cardId);
@@ -1099,8 +1099,9 @@ function mval(id) { return M.parse(val(id)); }
 /* --- hızlı harcama ------------------------------------------------- */
 function quickAdd(preCard, forceMethod) {
   var cats = S.config.categories || DEFAULT_CATS;
-  /* Varsayılan: kredi kartı (en sık kullanılan). "Nakit harcama" düğmesi bunu bozar. */
-  var useCard = forceMethod ? forceMethod === 'CREDIT_CARD' : !!(preCard || defaultCardId());
+  /* Varsayılan: nakit. Kart harcamaları banka belgesinden gelir (19.11.2026, Hasan'ın isteği);
+     kart yalnızca bir karttan açılınca ya da elle seçilince. */
+  var useCard = forceMethod ? forceMethod === 'CREDIT_CARD' : !!preCard;
   modal('Hızlı harcama',
     '<label class="f"><span>Tutar</span><input id="qTutar" class="giant" inputmode="decimal" placeholder="0,00" autofocus></label>' +
     '<div class="f" style="margin-top:12px"><span>Ödeme yöntemi</span>' +
@@ -1603,15 +1604,24 @@ async function planSave() {
 var LIB = {
   pdf: ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', 'vendor/pdf.min.js'],
   pdfw: ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js', 'vendor/pdf.worker.min.js'],
-  xlsx: ['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'vendor/xlsx.full.min.js']
+  xlsx: ['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'vendor/xlsx.full.min.js'],
+  ocr: ['https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js', 'vendor/tesseract/tesseract.min.js']
 };
+/* OCR'ın işçi, çekirdek ve Türkçe dil dosyaları: kitaplık nereden geldiyse oradan */
+var OCR_YOL = {
+  cdn: { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@6.0.0',
+    langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/tur@1.0.0/4.0.0_best_int' },
+  yerel: { workerPath: 'vendor/tesseract/worker.min.js', corePath: 'vendor/tesseract/core', langPath: 'vendor/tesseract/lang' }
+};
+var LIB_YER = {};
 /* Claude sayfasında kitaplıklar sayfayla birlikte yayınlanır; önce onları dene */
 if (typeof claude !== 'undefined' || window.HZ_YEREL_KITAPLIK) Object.keys(LIB).forEach(function (k) { LIB[k].reverse(); });
 async function lib(ad, hazir) {
   if (hazir()) return;
   for (var i = 0; i < LIB[ad].length; i++) {
     try { await loadScript(LIB[ad][i]); } catch (e) { }
-    if (hazir()) return;
+    if (hazir()) { LIB_YER[ad] = LIB[ad][i]; return; }
   }
   throw new Error('okuyucu yüklenemedi (' + ad + ') — internet bağlantını kontrol edip tekrar dene');
 }
@@ -1680,41 +1690,388 @@ async function ekstreDosyaOku(file) {
   return HZEkstre.fromTable(tbl);
 }
 
-/* 1. adım: kart ve dosya */
-function ekstreModal(cardId) {
-  if (!S.cards.length) { toast('Önce bir kart ekleyin'); return; }
-  EX = null;
-  var c = cardById(cardId) || cardById(defaultCardId()) || S.cards[0];
-  modal('Ekstre yükle',
-    '<div class="muted" style="margin-bottom:12px">Ay içinde elle girdiğin harcamalar ekstredeki satırlarla ' +
-      '<b>eşleştirilir</b>; aynı işlem ikinci kez yazılmaz. Onaylamadan önce her satırı göreceksin.</div>' +
-    '<div class="frm two">' +
-      '<label class="f"><span>Kart</span><select id="xCard">' + cardOptions(c.id) + '</select></label>' +
-      '<label class="f"><span>Kişi</span><select id="xPerson">' + peopleOpts(c.owner) + '</select></label>' +
+/* ═════════════════════════════ BELGE YÜKLE (banka / kart dökümü) ═══
+   19.11.2026: Hasan kart harcamalarını artık elle girmiyor. Bankanın hesap hareketlerini
+   ya da kartın harcama listesini — ekstre kesilmemiş olsa bile — PDF, ekran görüntüsü ya da
+   fotoğraf olarak yüklüyor; uygulama türünü tanıyıp satırları yerine koyuyor.
+   · Hesap hareketleri → gelir / banka gideri / kart borcu ödemesi (HZBelge)
+   · Kart harcamaları → mevcut ekstre eşleştirmesi (HZEkstre + HZ.Recon)
+   Aynı işlem ikinci kez yazılmaz: kalıcı kimlik + (tarih, saat, tutar) parmak izi. */
+var OCR_ISCI = null;
+async function ocrIsci(ilerle) {
+  await lib('ocr', function () { return typeof Tesseract !== 'undefined'; });
+  var y = /^vendor\//.test(LIB_YER.ocr || '') ? OCR_YOL.yerel : OCR_YOL.cdn, mutlak = {};
+  Object.keys(y).forEach(function (k) { mutlak[k] = new URL(y[k], location.href).href; });
+  ilerle('Okuma aracı hazırlanıyor (ilk seferde ~5 MB iner)…');
+  var w = await Tesseract.createWorker('tur', 1, Object.assign(mutlak, {
+    logger: function (m) { if (m && m.status === 'recognizing text' && OCR_ISCI && OCR_ISCI.yuzde) OCR_ISCI.yuzde(m.progress); }
+  }));
+  return w;
+}
+/** Görüntüyü OCR için uygun boyuta getirir (küçük ekran görüntüsü büyütülür, dev fotoğraf küçültülür) */
+function tuvale(kaynak, gen, yuk, enAz) {
+  enAz = enAz || 1800;
+  var olc = gen < enAz ? Math.min(2.5, enAz / gen) : gen > 3000 ? 3000 / gen : 1;
+  var c = document.createElement('canvas');
+  c.width = Math.round(gen * olc); c.height = Math.round(yuk * olc);
+  var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.imageSmoothingQuality = 'high'; g.drawImage(kaynak, 0, 0, c.width, c.height);
+  return c;
+}
+async function resimTuval(file) {
+  var bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch (e) {
+    bmp = await new Promise(function (ok, no) {
+      var im = new Image(); im.onload = function () { ok(im); }; im.onerror = function () { no(new Error('fotoğraf açılamadı (JPG ya da PNG olmalı)')); };
+      im.src = URL.createObjectURL(file);
+    });
+  }
+  return tuvale(bmp, bmp.width, bmp.height);
+}
+/** PDF → sayfalar: metni olan sayfa kelimeleriyle, taranmış sayfa tuval olarak */
+async function pdfSayfalari(buf) {
+  await lib('pdf', function () { return !!window.pdfjsLib; });
+  await lib('pdfw', function () { return !!window.pdfjsWorker; });
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIB.pdfw[0];
+  var pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)), isEvalSupported: false }).promise, out = [];
+  for (var p = 1; p <= pdf.numPages; p++) {
+    var page = await pdf.getPage(p), vp = page.getViewport({ scale: 1 });
+    var tc = await page.getTextContent(), kel = [];
+    tc.items.forEach(function (it) {
+      if (!it.str || !it.str.trim()) return;
+      var tx = window.pdfjsLib.Util.transform(vp.transform, it.transform), h = Math.hypot(tx[2], tx[3]) || 8;
+      kel.push({ t: it.str, x0: tx[4], x1: tx[4] + (it.width || h * it.str.length * 0.5), y0: tx[5] - h, y1: tx[5] + h * 0.2 });
+    });
+    if (kel.length >= 15) { out.push({ tur: 'metin', kel: kel }); continue; }
+    /* taranmış sayfa: gömülü görüntünün kendi çözünürlüğünde çiz, sonra yumuşatarak büyüt.
+       (pdf.js düşük çözünürlüklü taramayı doğrudan 300 dpi'ye çizerken kenarları basamaklı yapıyor, OCR bozuluyor) */
+    var gen = 0;
+    try {
+      var ops = await page.getOperatorList(), O = window.pdfjsLib.OPS;
+      ops.fnArray.forEach(function (f, i) { if (f === O.paintImageXObject || f === O.paintJpegXObject) gen = Math.max(gen, +ops.argsArray[i][1] || 0); });
+    } catch (e) { }
+    var dogal = gen ? gen / vp.width : 300 / 72;
+    var olc = Math.min(300 / 72, Math.max(1.5, dogal)), v2 = page.getViewport({ scale: olc });
+    var c = document.createElement('canvas'); c.width = Math.round(v2.width); c.height = Math.round(v2.height);
+    var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: g, viewport: v2 }).promise;
+    out.push({ tur: 'gorsel', tuval: c.width < 2400 ? tuvale(c, c.width, c.height, 2480) : c });
+  }
+  return out;
+}
+/* OCR'da "1.400.00" gibi okunan tutarları kart okuyucusunun anlayacağı "1.400,00" biçimine çevir */
+function ocrSatirDuzelt(l) {
+  return String(l).replace(/(\d{1,3}(?:\.\d{3})*)\.(\d{2})(?![\d.,])/g, '$1,$2').replace(/(\d),(\d{3}),(\d{2})(?!\d)/g, '$1.$2,$3');
+}
+/** Dosyalar → {tur:'hesap', hesap} ya da {tur:'kart', st, metin}. ilerle(metin, yüzde) */
+async function belgeOku(files, ilerle) {
+  var adlar = files.map(function (f) { return f.name; }).join(', ');
+  if (files.length === 1 && /\.(xlsx|xls|csv|txt)$/i.test(files[0].name)) {
+    var f = files[0], buf = await f.arrayBuffer(), tbl;
+    if (/\.(csv|txt)$/i.test(f.name)) tbl = csvTable(buf);
+    else {
+      await lib('xlsx', function () { return typeof XLSX !== 'undefined'; });
+      var wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true });
+      tbl = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false });
+    }
+    var hh = HZBelge.tablodanHesap(tbl);
+    if (hh && hh.satirlar.length) return { tur: 'hesap', hesap: hh, dosya: f.name };
+    return { tur: 'kart', st: HZEkstre.fromTable(tbl), metin: tbl.slice(0, 30).map(function (r) { return r.join(' '); }).join('\n'), dosya: f.name };
+  }
+  /* sayfaları topla */
+  var sayfalar = [];
+  for (var i = 0; i < files.length; i++) {
+    var fl = files[i];
+    ilerle(fl.name + ' açılıyor…');
+    if (/\.pdf$/i.test(fl.name) || fl.type === 'application/pdf') {
+      var b2 = await fl.arrayBuffer(), ps = await pdfSayfalari(b2);
+      ps.forEach(function (p) { p.buf = b2; p.dosya = fl.name; });
+      sayfalar = sayfalar.concat(ps);
+    } else if (/^image\//.test(fl.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(fl.name)) {
+      sayfalar.push({ tur: 'gorsel', tuval: await resimTuval(fl), dosya: fl.name, foto: true });
+    } else throw new Error(fl.name + ': bu dosya türü okunamıyor (PDF, JPG, PNG, Excel ya da CSV)');
+  }
+  /* metin PDF'i kart ekstresiyse eski, birebir okuyucu */
+  var hepsiMetin = sayfalar.every(function (p) { return p.tur === 'metin'; });
+  var kaynaklar = [], isci = null;
+  try {
+    var gorsel = sayfalar.filter(function (p) { return p.tur === 'gorsel'; }).length, sira = 0;
+    for (var j = 0; j < sayfalar.length; j++) {
+      var p = sayfalar[j], k;
+      if (p.tur === 'metin') k = HZBelge.metinKaynak(p.kel);
+      else {
+        if (!isci) { isci = await ocrIsci(ilerle); OCR_ISCI = { w: isci }; }
+        sira++;
+        var bas = gorsel > 1 ? sira + '/' + gorsel + '. sayfa okunuyor' : 'Belge okunuyor';
+        ilerle(bas + '…', 0);
+        OCR_ISCI.yuzde = function (y) { ilerle(bas + '…', y); };
+        k = await HZBelge.ocrKaynak(isci, p.tuval);
+        k.ayniOlcek = !p.foto;
+      }
+      kaynaklar.push(k);
+    }
+    var metin = kaynaklar.map(function (k) { return k.metin; }).join('\n');
+    var tablo = null; for (var t = 0; t < kaynaklar.length && !tablo; t++) tablo = HZBelge.tabloBul(kaynaklar[t].kelimeler);
+    if (HZBelge.turBul(metin, tablo) === 'hesap' && tablo) {
+      if (isci) OCR_ISCI.yuzde = function (y) { ilerle('Satırlar ayrılıyor…', y); };
+      ilerle('Satırlar ayrılıyor…');
+      var h = await HZBelge.hesapOku(kaynaklar);
+      return { tur: 'hesap', hesap: h, dosya: adlar };
+    }
+    /* kart dökümü */
+    var st;
+    if (hepsiMetin) {
+      var tekrar = {}, pdfler = sayfalar.map(function (p) { return p.buf; }).filter(function (b) { if (tekrar[b.byteLength]) return false; tekrar[b.byteLength] = 1; return true; });
+      var satir = []; for (var q = 0; q < pdfler.length; q++) satir = satir.concat(await pdfLines(pdfler[q]));
+      st = HZEkstre.fromLines(satir);
+    } else {
+      var duz = []; kaynaklar.forEach(function (k) { duz = duz.concat(k.satirlar.map(function (l) { return ocrSatirDuzelt(l.t); })); });
+      st = HZEkstre.fromLines(duz);
+      var alt = HZEkstre.fromLines(HZBelge.kartSatirlari(duz));
+      if (alt.rows.length > st.rows.length) { alt.bank = st.bank !== 'Tanınmayan banka' ? st.bank : 'Fotoğraftan okundu'; alt.close = alt.close || st.close; alt.due = alt.due || st.due; if (alt.total == null) alt.total = st.total; st = alt; }
+    }
+    return { tur: 'kart', st: st, metin: metin, dosya: adlar };
+  } finally {
+    if (isci) { try { await isci.terminate(); } catch (e) { } OCR_ISCI = null; }
+  }
+}
+
+/* 1. adım: dosya (kart ve kişi isteğe bağlı) */
+function ekstreModal(cardId) { belgeModal(cardId); }
+function belgeModal(cardId) {
+  EX = null; HB = null;
+  var c = cardById(cardId);
+  modal('Belge yükle',
+    '<div class="muted" style="margin-bottom:12px">Bankanın <b>hesap hareketleri</b> ya da kartının <b>harcama listesi</b> — ' +
+      'ekstre kesilmemiş olsa da olur. PDF, ekran görüntüsü ya da fotoğraf. Onaylamadan önce her satırı göreceksin; ' +
+      '<b>daha önce yüklenen işlem ikinci kez yazılmaz.</b></div>' +
+    '<label class="f"><span>Dosya</span>' +
+      '<input type="file" id="xFile" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.txt,image/*,application/pdf"></label>' +
+    '<div class="muted" style="margin-top:6px">Birden fazla sayfa ya da fotoğraf seçebilirsin. Fotoğrafta tablo başlığı (Tarih, Açıklama, Tutar) görünsün. Dosya bu cihazda okunur, hiçbir yere gönderilmez.</div>' +
+    '<div class="frm two" style="margin-top:12px">' +
+        '<label class="f"><span>Kart</span><select id="xCard"><option value="">Belgeden bul</option>' + cardOptions(c ? c.id : '-') + '</select></label>' +
+        '<label class="f"><span>Kişi</span><select id="xPerson">' + peopleOpts(c ? c.owner : null) + '</select></label>' +
     '</div>' +
-    '<label class="f" style="margin-top:12px"><span>Ekstre dosyası</span>' +
-      '<input type="file" id="xFile" accept=".pdf,.xlsx,.xls,.csv,.txt"></label>' +
-    '<div class="muted" style="margin-top:8px">PDF, Excel ya da CSV. Dosya bu cihazda okunur, hiçbir yere gönderilmez.</div>' +
-    '<div id="xMsg" style="margin-top:10px"></div>',
+    '<div id="xMsg" style="margin-top:12px"></div>',
     '<button class="btn" data-act="closeModal">Vazgeç</button>');
   $('#xCard').addEventListener('change', function () {
     var k = cardById($('#xCard').value); if (k && k.owner) $('#xPerson').value = k.owner;
   });
   $('#xFile').addEventListener('change', function (e) {
-    var f = e.target.files[0]; if (!f) return;
-    var cid = val('xCard'), person = val('xPerson');
-    $('#xMsg').innerHTML = '<div class="muted">Okunuyor…</div>';
-    ekstreDosyaOku(f).then(function (st) {
+    var files = Array.prototype.slice.call(e.target.files || []); if (!files.length) return;
+    var secili = val('xCard'), person = val('xPerson'), kisiSecildi = $('#xPerson').dataset.elle === '1';
+    var ilerle = function (m, y) {
+      var el = $('#xMsg'); if (!el) return;
+      el.innerHTML = '<div class="muted">' + esc(m) + (y != null ? ' %' + Math.round(y * 100) : '') + '</div>' +
+        (y != null ? '<div style="height:6px;background:var(--surf2);border-radius:3px;margin-top:6px;overflow:hidden"><div style="height:100%;width:' + Math.round(y * 100) + '%;background:var(--acc)"></div></div>' : '');
+    };
+    ilerle('Okunuyor…');
+    $('#xFile').disabled = true;
+    belgeOku(files, ilerle).then(function (r) {
+      if (!$('#xMsg')) return;
+      if (r.tur === 'hesap') { hesapBaslat(r, person, kisiSecildi); return; }
+      var st = r.st;
       if (!st.rows.length) {
+        $('#xFile').disabled = false;
         $('#xMsg').innerHTML = '<div class="warnbox"><span>⚠</span><div><b class="xt">İşlem satırı bulunamadı</b>' +
-          'Dosyada tarih ve tutar içeren satır yok ya da dosya taranmış bir görüntü. Bankanın Excel ya da metin tabanlı PDF çıktısını deneyin.</div></div>';
+          'Belgede tarih ve tutar içeren satır seçilemedi. Fotoğrafı düz, yakından ve tablonun tamamı görünecek şekilde çek ya da bankanın PDF / Excel çıktısını dene.</div></div>';
         return;
       }
-      ekstreBaslat(cid, person, f.name, st);
+      var kart = secili ? [cardById(secili)] : HZBelge.kartBul({ kartlar: S.cards }, r.metin || '');
+      if (!secili && kart.length !== 1) {
+        var tah = HZBelge.kartBul({ kartlar: S.cards }, '', null, HZBelge.bankaBul((r.metin || '').slice(0, 600)));
+        if (tah.length === 1) kart = tah;
+      }
+      if (kart.length === 1 && kart[0]) { ekstreBaslat(kart[0].id, kart[0].owner || person, r.dosya, st); return; }
+      /* kart bulunamadı: sor */
+      $('#xMsg').innerHTML = '<div class="warnbox"><span>?</span><div style="flex:1"><b class="xt">' + st.rows.length + ' kart işlemi okundu — hangi kartın?</b>' +
+        '<select id="xCard2" style="margin-top:8px">' + cardOptions((kart[0] || {}).id) + '</select>' +
+        '<div style="margin-top:8px"><button class="btn pri sm" id="xDevam">Devam</button></div></div></div>';
+      $('#xDevam').addEventListener('click', function () {
+        var k = cardById(val('xCard2')); ekstreBaslat(k.id, k.owner || person, r.dosya, st);
+      });
     }).catch(function (err) {
-      $('#xMsg').innerHTML = '<div class="warnbox crit"><span>⚠</span><div><b class="xt">Dosya okunamadı</b>' + esc(err && err.message || err) + '</div></div>';
+      if (!$('#xMsg')) return;
+      $('#xFile').disabled = false;
+      $('#xMsg').innerHTML = '<div class="warnbox crit"><span>⚠</span><div><b class="xt">Belge okunamadı</b>' + esc(err && err.message || err) + '</div></div>';
     });
   });
+  $('#xPerson').addEventListener('change', function () { $('#xPerson').dataset.elle = '1'; });
+}
+
+/* ─── hesap hareketleri önizleme ─── */
+var HB = null;
+var HB_EK_KAT = ['Maaş', 'Gelen havale', 'Havale', 'Yatırım', 'Nakit çekim', 'Kendi hesabından'];
+function hbKategoriler() {
+  var l = (S.config.categories || DEFAULT_CATS).slice();
+  HB_EK_KAT.forEach(function (k) { if (l.indexOf(k) < 0) l.push(k); });
+  return l;
+}
+function hesapKaynak(banka) { return (banka || 'banka') + '-hesap'; }
+function hesapBaslat(r, person, kisiSecildi) {
+  var h = r.hesap, b = h.bilgi || {}, insanlar = S.config.people || [];
+  if (!kisiSecildi && b.sahip) {
+    var ilk = HZBelge.sade(b.sahip).split(' ')[0];
+    var p = insanlar.filter(function (x) { return HZBelge.sade(x.name).split(' ')[0] === ilk; })[0];
+    if (p) person = p.name;
+  }
+  var ctx = { kartlar: S.cards, sahip: b.sahip, banka: b.banka, kisi: person };
+  var ids = HZBelge.kimlikVer(h.satirlar, b.banka), kaynak = hesapKaynak(b.banka);
+  /* parmak izi: aynı gün, aynı yön, aynı tutar (saat varsa saat de) — bankadan daha önce gelmiş kayıtlar */
+  var var_ = {}, idVar = {};
+  S.transactions.forEach(function (t) {
+    idVar[t.id] = 1;
+    if (t.method !== 'BANK_ACCOUNT' || !/-hesap$/.test(t.kaynak || '')) return;
+    var a = hbIz(t.date, t.saat, t.kind === KIND.INCOME ? 1 : -1, t.amount);
+    var_[a] = (var_[a] || 0) + 1;
+  });
+  var kullan = {};
+  var satirlar = h.satirlar.map(function (s, i) {
+    var o = HZBelge.siniflandir(s, ctx), d = 'YENI', neden = o.neden || '';
+    var a = hbIz(s.date, s.saat, (s.amount || 0) > 0 ? 1 : -1, Math.abs(s.amount || 0));
+    if (idVar[ids[i]]) d = 'VAR';
+    else if (s.amount != null && (kullan[a] || 0) < (var_[a] || 0)) { kullan[a] = (kullan[a] || 0) + 1; d = 'VAR'; }
+    var x = { id: ids[i], s: s, o: o, durum: d, neden: neden, tutar: Math.abs(s.amount || 0),
+      karar: d === 'VAR' ? 'var' : o.karar === 'atla' ? 'atla' : (o.kind === 'CARD_PAYMENT' ? 'kart:' + (o.cardId || '') : o.kind),
+      kategori: o.category };
+    if (d === 'YENI' && x.karar !== 'atla') {
+      var es = hbBenzer(x, kaynak);
+      if (es) { x.durum = 'BENZER'; x.karar = 'atla'; x.neden = 'elle girdiğin kayıt var: ' + (es.note || es.category || '') + ' · ' + D.trFmt(es.date); }
+    }
+    if (s.durum === 'kontrol' && x.karar !== 'var') x.uyari = s.notlar.join(', ');
+    return x;
+  });
+  HB = { dosya: r.dosya, bilgi: b, yon: h.yon, satirlar: satirlar, person: person, kaynak: kaynak, atilan: h.atilan || [], uyarilar: h.uyarilar || [] };
+  hesapOnizle();
+}
+function hbIz(date, saat, yon, tutar) { return date + '|' + (saat || '') + '|' + yon + '|' + tutar; }
+/** Elle girilmiş (bankadan gelmemiş) aynı işlem: aynı tür, aynı tutar, ±1 gün */
+function hbBenzer(x, kaynak) {
+  var tur = x.karar.indexOf('kart:') === 0 ? KIND.CARD_PAYMENT : x.karar;
+  return S.transactions.filter(function (t) {
+    return t.kind === tur && t.amount === x.tutar && Math.abs(D.serial(t.date) - D.serial(x.s.date)) <= 1 &&
+      t.kaynak !== kaynak && !/-hesap$/.test(t.kaynak || '') && (tur !== KIND.EXPENSE || t.method === 'BANK_ACCOUNT');
+  })[0];
+}
+function hbSay() {
+  var n = { ekle: 0, gelir: 0, gider: 0, odeme: 0 };
+  HB.satirlar.forEach(function (x) {
+    if (x.karar === 'var' || x.karar === 'atla' || !x.tutar) return;
+    n.ekle++;
+    if (x.karar === 'INCOME') n.gelir += x.tutar; else if (x.karar === 'EXPENSE') n.gider += x.tutar; else n.odeme += x.tutar;
+  });
+  return n;
+}
+function hbSatir(x, i) {
+  var s = x.s, gelen = (s.amount || 0) > 0;
+  var turSec = '<select data-hb="tur" data-i="' + i + '" style="max-width:190px">' +
+    '<option value="EXPENSE"' + (x.karar === 'EXPENSE' ? ' selected' : '') + '>Gider</option>' +
+    '<option value="INCOME"' + (x.karar === 'INCOME' ? ' selected' : '') + '>Gelir</option>' +
+    S.cards.filter(function (c) { return c.active !== false; }).map(function (c) {
+      return '<option value="kart:' + esc(c.id) + '"' + (x.karar === 'kart:' + c.id ? ' selected' : '') + '>Kart ödemesi · ' + esc(c.name) + '</option>';
+    }).join('') +
+    (x.karar === 'kart:' ? '<option value="kart:" selected>Kart ödemesi · kartı seç</option>' : '') +
+    '<option value="atla"' + (x.karar === 'atla' ? ' selected' : '') + '>Ekleme (atla)</option></select>';
+  var katSec = x.karar === 'EXPENSE' || x.karar === 'INCOME' ? '<select data-hb="kat" data-i="' + i + '" style="max-width:150px">' +
+    hbKategoriler().concat(hbKategoriler().indexOf(x.kategori) < 0 && x.kategori ? [x.kategori] : []).map(function (k) { return '<option' + (k === x.kategori ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select>' : '';
+  var tutar = x.uyari ? '<input data-hb="tutar" data-i="' + i + '" class="money" inputmode="decimal" style="width:110px" value="' + (x.tutar ? M.fmt(x.tutar, { symbol: false }) : '') + '">' : '';
+  var etiket = (s.saat ? '<span class="tag">' + esc(s.saat) + '</span> ' : '') +
+    (s.durum === 'duzeltildi' ? '<span class="tag ok" title="okunan tutar bakiyeyle düzeltildi">✓ bakiyeyle düzeltildi</span> ' : '');
+  return '<div class="xrow s-' + x.durum + '">' +
+    '<div class="xd num">' + D.trFmt(s.date).slice(0, 5) + '</div>' +
+    '<div class="xn"><div>' + etiket + '<b>' + esc(x.o.note || '') + '</b></div>' +
+      '<div class="xes">' + esc(s.desc || '—') + '</div>' +
+      (x.neden ? '<div class="xes" style="color:var(--acc-ink)">' + esc(x.neden) + '</div>' : '') +
+      (x.uyari ? '<div class="xes" style="color:var(--bad)">⚠ ' + esc(x.uyari) + ' — tutarı belgeyle karşılaştır</div>' : '') + '</div>' +
+    '<div class="xa num"' + (gelen ? ' style="color:var(--ok)"' : '') + '>' + (gelen ? '+' : '−') + money(x.tutar) + '</div>' +
+    '<div class="xc" style="gap:6px;flex-wrap:wrap">' + (x.durum === 'VAR' ? '<span class="muted">daha önce eklendi</span>' : tutar + turSec + katSec) + '</div></div>';
+}
+function hesapOnizle() {
+  var b = HB.bilgi, L = HB.satirlar, n = hbSay();
+  var say = function (d) { return L.filter(function (x) { return x.durum === d; }).length; };
+  var kontrol = L.filter(function (x) { return x.uyari; }).length, duz = L.filter(function (x) { return x.s.durum === 'duzeltildi'; }).length;
+  var grup = function (baslik, aciklama, f) {
+    var l = L.map(function (x, i) { return f(x) ? hbSatir(x, i) : ''; }).join('');
+    return l ? '<div class="xgrp"><div class="xgh"><b>' + baslik + '</b> <span class="muted">' + aciklama + '</span></div>' + l + '</div>' : '';
+  };
+  var bankaAd = { ziraat: 'Ziraat Bankası', isbank: 'İş Bankası', garanti: 'Garanti BBVA', yapikredi: 'Yapı Kredi', vakif: 'VakıfBank', halk: 'Halkbank', akbank: 'Akbank', qnb: 'QNB', teb: 'TEB', deniz: 'DenizBank', enpara: 'Enpara', kuveyt: 'Kuveyt Türk', ing: 'ING', papara: 'Papara' }[b.banka] || 'Banka';
+  modal(bankaAd + ' · hesap hareketleri',
+    '<div class="muted" style="margin-bottom:10px">' + esc(HB.dosya) + ' · ' + L.length + ' satır' +
+      (b.donem ? ' · ' + D.trFmt(b.donem[0]) + ' – ' + D.trFmt(b.donem[1]) : '') + (b.hesap ? ' · hesap …' + esc(String(b.hesap).slice(-4)) : '') + '</div>' +
+    '<label class="f" style="max-width:220px"><span>Kişi</span><select id="hbKisi">' + peopleOpts(HB.person) + '</select></label>' +
+    (HB.yon ? (kontrol ? '<div class="warnbox" style="margin-top:12px"><span>⚠</span><div><b class="xt">' + kontrol + ' satırda tutar kesin okunamadı</b>Kırmızı işaretli satırlarda tutarı belgeyle karşılaştır, gerekirse düzelt.</div></div>'
+      : '<div class="warnbox" style="margin-top:12px;background:var(--ok-soft);border-color:var(--ok);color:var(--ok)"><span>✓</span><div><b class="xt">Okuma sağlaması tuttu</b>Her satırın tutarı bir önceki bakiyeyle uyuşuyor' + (duz ? ' (' + duz + ' okuma hatası bakiyeden düzeltildi)' : '') + '.</div></div>')
+      : (kontrol ? '<div class="warnbox" style="margin-top:12px"><span>⚠</span><div><b class="xt">Bakiye sütunu yok — ' + kontrol + ' satırı kontrol et</b>Tutarları belgeyle karşılaştır.</div></div>' : '')) +
+    HB.uyarilar.map(function (u) { return '<div class="warnbox" style="margin-top:10px"><span>⚠</span><div>' + esc(u) + '</div></div>'; }).join('') +
+    (HB.atilan.length ? '<div class="muted" style="margin-top:10px">' + HB.atilan.length + ' satır belgede iki kez göründüğü için bir kez alındı.</div>' : '') +
+    (say('VAR') === L.length ? '<div class="warnbox" style="margin-top:10px;background:var(--surf2);border-color:var(--brd);color:var(--ink2)"><span>ℹ</span><div><b class="xt">Bu belge daha önce yüklenmiş</b>Bütün satırlar zaten kayıtlı; eklenecek yeni işlem yok.</div></div>' : '') +
+    '<div class="chips" style="margin:14px 0 4px">' +
+      '<span class="pill PAID">' + n.ekle + ' eklenecek</span>' +
+      (say('VAR') ? '<span class="pill ghost">' + say('VAR') + ' zaten var</span>' : '') +
+      (say('BENZER') ? '<span class="pill SOON">' + say('BENZER') + ' elle girilmiş</span>' : '') +
+    '</div>' +
+    '<div class="muted" id="hbOzet">Gelir ' + money(n.gelir) + ' · gider ' + money(n.gider) + ' · kart ödemesi ' + money(n.odeme) + '</div>' +
+    grup('Eklenecek', 'türünü ya da kategorisini değiştirebilirsin', function (x) { return x.durum !== 'VAR' && x.karar !== 'atla'; }) +
+    grup('Eklenmeyecek', 'istersen türünü seçip ekleyebilirsin', function (x) { return x.durum !== 'VAR' && x.karar === 'atla'; }) +
+    grup('Zaten kayıtlı', 'daha önce yüklenmiş, tekrar yazılmayacak', function (x) { return x.durum === 'VAR'; }),
+    '<button class="btn" data-act="closeModal">Vazgeç</button>' +
+    '<button class="btn pri" data-act="hbUygula" id="hbOk">Onayla — ' + n.ekle + ' kayıt</button>');
+  $('#modalHost').querySelector('.sheet').classList.add('wide');
+  $('#hbKisi').addEventListener('change', function () { HB.person = val('hbKisi'); });
+  $('#modalHost').querySelectorAll('[data-hb]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      var x = HB.satirlar[+el.dataset.i];
+      if (el.dataset.hb === 'tur') {
+        x.karar = el.value;
+        if (x.karar === 'INCOME' && ['Diğer', 'Havale', 'Faiz & Ücret', 'Nakit çekim'].indexOf(x.kategori) >= 0) x.kategori = 'Gelen havale';
+        if (x.karar === 'EXPENSE' && ['Gelen havale', 'Maaş', 'Kredi Kartı'].indexOf(x.kategori) >= 0) x.kategori = 'Diğer';
+        hesapOnizle();
+      } else if (el.dataset.hb === 'kat') x.kategori = el.value;
+      else if (el.dataset.hb === 'tutar') { var v = M.parse(el.value); if (v > 0) { x.tutar = v; } }
+      var n2 = hbSay(), ok = $('#hbOk'), oz = $('#hbOzet');
+      if (ok) ok.textContent = 'Onayla — ' + n2.ekle + ' kayıt';
+      if (oz) oz.textContent = 'Gelir ' + money(n2.gelir) + ' · gider ' + money(n2.gider) + ' · kart ödemesi ' + money(n2.odeme);
+    });
+  });
+}
+async function hesapUygula() {
+  if (!HB) return;
+  var eksik = HB.satirlar.filter(function (x) { return x.karar === 'kart:'; });
+  if (eksik.length) { toast('Kart ödemesi satırlarında kartı seç'); return; }
+  var yukleme = uid('bel'), simdi = new Date().toISOString(), kat = {};
+  var islemler = HB.satirlar.filter(function (x) { return x.karar !== 'var' && x.karar !== 'atla' && x.tutar > 0; }).map(function (x) {
+    var kart = x.karar.indexOf('kart:') === 0 ? x.karar.slice(5) : null;
+    var t = { id: x.id, date: x.s.date, amount: x.tutar, person: HB.person, method: 'BANK_ACCOUNT', raw: x.s.desc,
+      kaynak: HB.kaynak, yukleme: yukleme, kind: kart ? KIND.CARD_PAYMENT : x.karar,
+      category: kart ? 'Kredi Kartı' : x.kategori, note: x.o.note || x.s.desc.slice(0, 60), createdAt: simdi };
+    if (kart) { t.cardId = kart; var c = cardById(kart); if (x.o.kind !== 'CARD_PAYMENT' && c) t.note = c.name + ' kart borcu ödemesi'; }
+    if (x.s.fis) t.fis = x.s.fis;
+    if (x.s.saat) t.saat = x.s.saat;
+    if (t.kind === KIND.EXPENSE) { var r = duzenliBul(t); if (r) t.recurringId = r.id; }
+    kat[t.category] = 1;
+    t._zorla = true;       /* elle girilmişle çakışma kararı önizlemede verildi */
+    return t;
+  });
+  var aciklama = (HB.bilgi.banka ? HB.bilgi.banka.charAt(0).toLocaleUpperCase('tr-TR') + HB.bilgi.banka.slice(1) + ' ' : '') + 'hesap hareketleri · ' + HB.dosya;
+  HB = null;
+  await kayitEkle({ islemler: islemler, kategoriler: Object.keys(kat), aciklama: aciklama, yukleme: yukleme });
+}
+/** Banka gideri bir düzenli ödemenin (kira, aidat…) bu ayki taksidiyse ona bağla — çift sayılmasın */
+function duzenliBul(t) {
+  var mk = D.monthKey(t.date);
+  return (S.recurring || []).filter(function (r) {
+    if (r.active === false) return false;
+    var ad = HZBelge.sade(r.name + ' ' + (r.category || '')), kt = HZBelge.sade(t.category);
+    var yakin = Math.abs(r.amount - t.amount) <= Math.max(500, r.amount * 0.05);
+    var odenen = S.transactions.some(function (x) { return x.recurringId === r.id && D.monthKey(x.date) === mk; });
+    return !odenen && yakin && kt && ad.indexOf(kt) >= 0;
+  })[0];
+}
+async function belgeGeriAl(yukleme) {
+  var n = S.transactions.filter(function (t) { return t.yukleme === yukleme; }).length;
+  await delTxWhere(function (t) { return t.yukleme === yukleme; });
+  closeModal(); renderAll(); toast(n + ' kayıt geri alındı');
 }
 
 function ekstreBaslat(cardId, person, fileName, st) {
@@ -2255,8 +2612,8 @@ function kapanisSerit() {
   if (gun > 45) return '';
   return '<div class="warnbox" style="background:var(--ok-soft);border-color:var(--ok);color:var(--ok);align-items:center"><span>✓</span>' +
     '<div style="flex:1"><b class="xt">' + D.trFmt(t) + ' itibarıyla tüm borçlar kapatıldı</b>' +
-    'Kart borçları bu tarihten sonra sıfırdan başlıyor. Yeni harcamaları gir ya da ekstreni yükle.</div>' +
-    '<button class="btn sm" data-act="ekstre">Ekstre yükle</button></div>';
+    'Kart borçları bu tarihten sonra sıfırdan başlıyor. Banka ya da kart dökümünü yükledikçe yeni harcamalar yerine oturur.</div>' +
+    '<button class="btn sm" data-act="ekstre">Belge yükle</button></div>';
 }
 
 /* --- kayıt ekleme dosyası (birleştirerek içe aktarma) --------------
@@ -2281,7 +2638,8 @@ async function kayitEkle(d) {
         (x.cardId || null) === (t.cardId || null) && (t.kind !== KIND.EXPENSE || x.method === t.method) &&
         x.kaynak !== t.kaynak;
     })[0];
-    if (es) { atlanan.push({ t: t, neden: 'benzer kayıt var: ' + (es.note || es.category || '') + ' · ' + D.trFmt(es.date) }); return; }
+    if (es && !t._zorla) { atlanan.push({ t: t, neden: 'benzer kayıt var: ' + (es.note || es.category || '') + ' · ' + D.trFmt(es.date) }); return; }
+    if (t._zorla) { t = Object.assign({}, t); delete t._zorla; }
     if (t.cardId && !cardById(t.cardId)) { t = Object.assign({}, t); delete t.cardId; }
     eklenen.push(Object.assign({ createdAt: simdi }, t));
   });
@@ -2309,6 +2667,7 @@ async function kayitEkle(d) {
           '<div class="muted">' + esc(a.neden) + '</div></div><div class="num">' + money(a.t.amount) + '</div></div>';
       }).join('') : '') +
     (hatali ? '<div class="warnbox" style="margin-top:12px"><span>⚠</span><div>' + hatali + ' satır okunamadı, eklenmedi.</div></div>' : ''),
+    (d.yukleme && eklenen.length ? '<button class="btn" data-act="belgeGeriAl" data-id="' + esc(d.yukleme) + '">Geri al</button>' : '') +
     '<button class="btn pri" data-act="closeModal">Tamam</button>');
 }
 
@@ -2475,7 +2834,9 @@ async function handleAct(act, ds, ev) {
     case 'exportJson': await exportJson(); break;
     case 'importJson': importJsonModal(); break;
     case 'importJsonRun': await importJsonRun(); break;
-    case 'ekstre': ekstreModal(ds.id || null); break;
+    case 'ekstre': belgeModal(ds.id || null); break;
+    case 'hbUygula': hesapUygula(); break;
+    case 'belgeGeriAl': belgeGeriAl(ds.id); break;
     case 'xDec': {
       var _o = EX && EX.res.items[+ds.i]; if (!_o) break;
       EX.dec[_o.row.key] = ds.v; EX.dec[_o.row.key + '|' + _o.status] = ds.v;
