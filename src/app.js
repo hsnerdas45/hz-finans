@@ -2688,16 +2688,18 @@ function mukerrerGruplari() {
         !(t.installment && son.installment && t.installment.no !== son.installment.no)) g.items.push(t);
     else { g = { items: [t] }; out.push(g); }
   });
+  /* ekstre ya da banka belgesiyle doğrulanmış kayıt (ikisi de aynı gün iki ayrı işlemi ayrı satır olarak gösterir) */
+  function dogru(t) { return t.ikey || /-hesap$/.test(t.kaynak || ''); }
   return out.filter(function (x) {
     if (x.items.length < 2) return false;
-    return x.items.filter(function (t) { return t.ikey; }).length < x.items.length;
+    return x.items.some(function (t) { return !dogru(t); });
   }).map(function (x) {
     x.kesin = x.items.every(function (t) { return t.date === x.items[0].date; });
     /* tutulacak kayıt: ekstreyle doğrulanmış olan, yoksa ilk girilen */
     x.items.sort(function (a, b) {
-      return (b.ikey ? 1 : 0) - (a.ikey ? 1 : 0) || ((a.createdAt || '') < (b.createdAt || '') ? -1 : 1);
+      return (dogru(b) ? 1 : 0) - (dogru(a) ? 1 : 0) || ((a.createdAt || '') < (b.createdAt || '') ? -1 : 1);
     });
-    x.fazla = x.items.slice(1).filter(function (t) { return !t.ikey; }).map(function (t) { return t.id; });
+    x.fazla = x.items.slice(1).filter(function (t) { return !dogru(t); }).map(function (t) { return t.id; });
     return x;
   }).filter(function (x) { return x.fazla.length; })
     .sort(function (a, b) { return (b.kesin ? 1 : 0) - (a.kesin ? 1 : 0) || (a.items[0].date < b.items[0].date ? 1 : -1); });
