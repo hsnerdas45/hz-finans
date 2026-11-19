@@ -102,7 +102,7 @@ const SEED = {
   await E(() => __T.handleAct('quickAdd', { card: 'ziraat' }));
   await page.fill('#qTutar', '12000'); await page.fill('#qDate', '2026-08-12'); await page.fill('#qTaksit', '6'); await page.fill('#qNote', 'Teknosa TV');
   await E(() => __T.handleAct('quickSave', {}));
-  await page.waitForFunction(() => __T.S.plans.length === 1 && !document.querySelector('.scrim'));
+  await page.waitForFunction(() => __T.S.plans.length === 1 && !document.querySelector('.scrim'), null, { timeout: 5000 }).catch(async e => { console.log('MODAL', await page.textContent('#modalHost')); throw e; });
   let a = await txs();
   ok('6 taksit oluştu', a.filter(t => t.inst).length === 6, a.filter(t => t.inst).length);
   const once = a.length;
