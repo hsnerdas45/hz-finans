@@ -6,15 +6,17 @@
   "scripts": {
     "build": "node tools/build.js",
     "serve": "node tools/build.js && node tools/serve.js",
-    "test": "node tests/engine.test.js && node tests/v7.test.js",
-    "test:e2e": "node tools/build.js --test && node tests/e2e.test.js && node tests/e2e-cloud.test.js && node tests/e2e-kapanis.test.js",
+    "test": "node tests/engine.test.js && node tests/v7.test.js && node tests/belge.test.js",
+    "test:e2e": "node tools/build.js --test && node tests/e2e.test.js && node tests/e2e-cloud.test.js && node tests/e2e-kapanis.test.js && node tests/e2e-belge.test.js",
     "test:firebase": "node tools/build.js --test && node tests/e2e-firebase.test.js",
     "test:hepsi": "npm test && npm run test:e2e && npm run test:firebase"
   },
   "devDependencies": {
+    "@tesseract.js-data/tur": "^1.0.0",
     "firebase": "10.14.1",
     "pdfjs-dist": "3.11.174",
     "playwright": "1.56.0",
+    "tesseract.js": "^6.0.1",
     "xlsx": "0.18.5"
   }
 }
