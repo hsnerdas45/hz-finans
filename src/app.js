@@ -309,6 +309,9 @@ function ayOdemePenceresi(mk) {
  * · Nakit, banka, gelir, kart ödemesi → TAKVİM ayı.
  */
 function txAy(t) {
+  /* Kayda özel ay: 20.11.2026'da Hasan uygulamayı Kasım'dan başlattı ve Ziraat dökümünün başı olan
+     21–31 Ekim hareketlerinin (Ekim maaşı dahil) Kasım'a ait olduğunu söyledi → bu kayıtlarda ay: '2026-11'. */
+  if (t.ay && /^\d{4}-\d{2}$/.test(t.ay)) return t.ay;
   var kartIsi = (t.kind === KIND.EXPENSE && t.method === METHOD.CARD) || t.kind === KIND.REFUND;
   if (kartIsi && t.cardId) {
     var c = cardById(t.cardId);
