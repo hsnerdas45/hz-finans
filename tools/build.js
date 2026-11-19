@@ -20,10 +20,10 @@ const FIREBASE = '10.14.1';
 const shell = R('src/shell.html');
 const kes = shell.indexOf('</style>') + '</style>'.length;
 const bas = shell.slice(0, kes), govde = shell.slice(kes);
-const CEKIRDEK = ['engine.js', 'ekstre.js', 'charts.js'];
+const CEKIRDEK = ['engine.js', 'ekstre.js', 'belge.js', 'charts.js'];
 const HOOK_A = "buildNav();\nif (!S.config.categories";
 const HOOK_B = "window.__T = { S: S, Store: Store, handleAct: handleAct, txAy: txAy, aktifAy: aktifAy, ayRapor: ayRapor, " +
-  "ekstreDosyaOku: ekstreDosyaOku, get EX() { return EX; } };\n" + HOOK_A;
+  "ekstreDosyaOku: ekstreDosyaOku, pdfSayfalari: pdfSayfalari, get EX() { return EX; }, get HB() { return HB; } };\n" + HOOK_A;
 
 function ust(pages) {
   return '<!doctype html>\n<html lang="tr">\n<head>\n<meta charset="utf-8">\n' +
@@ -55,6 +55,17 @@ const KITAP = { 'pdf.min.js': 'pdfjs-dist/build/pdf.min.js', 'pdf.worker.min.js'
 for (const [ad, kaynak] of Object.entries(KITAP)) {
   const k = path.join(ROOT, 'node_modules', kaynak);
   if (fs.existsSync(k)) W('vendor/' + ad, fs.readFileSync(k, 'utf8').replace(/\/\/# sourceMappingURL=.*$/m, ''));
+}
+
+/* 2b) OCR (fotoğraf / taranmış PDF): tesseract.js + çekirdek + Türkçe dil verisi — ikili dosyalar */
+const OCR = [['tesseract/tesseract.min.js', 'tesseract.js/dist/tesseract.min.js'], ['tesseract/worker.min.js', 'tesseract.js/dist/worker.min.js'],
+  ['tesseract/lang/tur.traineddata.gz', '@tesseract.js-data/tur/4.0.0_best_int/tur.traineddata.gz']];
+const CEKDIR = path.join(ROOT, 'node_modules', 'tesseract.js-core');
+if (fs.existsSync(CEKDIR)) fs.readdirSync(CEKDIR).filter(f => /^tesseract-core.*\.(js|wasm)$/.test(f)).forEach(f => OCR.push(['tesseract/core/' + f, 'tesseract.js-core/' + f]));
+for (const [ad, kaynak] of OCR) {
+  const k = path.join(ROOT, 'node_modules', kaynak), h = path.join(ROOT, 'vendor', ad);
+  if (!fs.existsSync(k)) continue;
+  fs.mkdirSync(path.dirname(h), { recursive: true }); fs.copyFileSync(k, h);
 }
 
 /* 3) Claude sayfası */
