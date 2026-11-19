@@ -77,6 +77,26 @@ const srv = http.createServer((q, r) => { let u = q.url.split('?')[0]; let f = u
   await page.waitForFunction(() => !__docs['config/app'].kapanis); await page.waitForTimeout(200);
   d = await E(() => Object.keys(__docs).filter(p => p.startsWith('cards/')).map(p => !!__docs[p].kapanis));
   ok('kapanış geri alınınca 3 kartın 3\'ünden de kalktı', d.length === 3 && d.every(x => !x), d);
+  /* kayıt ekleme dosyası: birleştirir, siler değil; ikinci kez eklemez; elle girilmiş benzeri atlar */
+  const ekle = fs.readFileSync(path.join(__dirname, 'ornek-hesap-ekle.json'), 'utf8');
+  await E(() => __T.handleAct('quickAdd', { method: 'BANK_ACCOUNT' }));
+  await E(() => { const b = [...document.querySelectorAll('#qMethod button')].find(x => x.dataset.m === 'BANK_ACCOUNT'); if (b) b.click(); });
+  await page.fill('#qTutar', '22500'); await page.fill('#qDate', '2026-11-03'); await page.fill('#qNote', 'kira');
+  await E(() => __T.handleAct('quickSave', {})); await page.waitForFunction(() => !document.querySelector('.scrim'));
+  const once2 = await E(() => __T.S.transactions.length);
+  await E(() => __T.handleAct('importJson', {})); await page.fill('#jsonIn', ekle);
+  await E(() => __T.handleAct('importJsonRun', {})); await page.waitForTimeout(400);
+  let ozet = await page.textContent('.sheet');
+  d = await E(() => ({ n: __T.S.transactions.length, kart: __T.S.cards.length, db: Object.keys(__docs).filter(p => p.startsWith('tx/')).reduce((a, p) => a + __docs[p].items.length, 0) }));
+  ok('ekleme dosyası: 30 eklendi, elle girilen kira atlandı, hiçbir şey silinmedi', d.n === once2 + 30 && d.db === d.n && d.kart === 3 && /benzer kayıt var/.test(ozet), [once2, d, ozet.slice(0, 200)]);
+  await page.click('.sheet [data-act="closeModal"]');
+  await E(() => __T.handleAct('importJson', {})); await page.fill('#jsonIn', ekle);
+  await E(() => __T.handleAct('importJsonRun', {})); await page.waitForTimeout(400);
+  ozet = await page.textContent('.sheet');
+  ok('aynı dosya ikinci kez: hiçbir şey eklenmedi', (await E(() => __T.S.transactions.length)) === once2 + 30 && /Eklenen kayıt\s*0/.test(ozet), ozet.slice(0, 120));
+  await page.click('.sheet [data-act="closeModal"]');
+  const kat = await E(() => ['Havale', 'Gelen havale', 'Yatırım', 'Nakit çekim'].every(k => __T.S.config.categories.includes(k)));
+  ok('yeni kategoriler eklendi', kat);
   ok('hata yok', errs.length === 0, errs.slice(0, 3));
   console.log('\n' + (n - bad) + '/' + n + ' geçti'); await br.close(); srv.close(); process.exit(bad ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(2); });

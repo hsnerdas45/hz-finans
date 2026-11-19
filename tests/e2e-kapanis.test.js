@@ -56,7 +56,9 @@ const srv = http.createServer((q, r) => { let u = q.url.split('?')[0]; let f = u
   ok('bu ayın kaydı açıldı', await E(() => Array.isArray(__T.S.buckets['2026-11'])));
   ok('geçmiş kayıtlar silinmedi', (await E(() => __T.S.transactions.filter(t => !t.installment).length)) === 6);
   await E(() => __T.handleAct('go', { go: 'ozet' }));
+  await E(() => __T.handleAct('ay', { d: '-1' }));   /* kapanan borçlar Ekim maaşının dönemindeydi */
   const kalan = await E(() => document.querySelector('#v-ozet').textContent);
+  await E(() => __T.handleAct('ay', { d: '0' }));
   ok('Özet: kapanmış borçlar bu ayın kalanından düşülmüyor (kalan ≥ 0 değilse yalnızca nakit gider kadar)', /AY BORCU\s*0 ₺|ay borcu\s*0 ₺/i.test(kalan), kalan.slice(0, 600));
   ok('Özet: "tüm borçlar kapatıldı" şeridi', /12\.11\.2026 itibarıyla tüm borçlar kapatıldı/.test(await page.textContent('#v-ozet')));
   await page.screenshot({ path: 'kapanis-ozet.png' });
