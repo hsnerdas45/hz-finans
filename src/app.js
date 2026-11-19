@@ -326,11 +326,12 @@ function ayTx(mk) {
 }
 function ayRapor(mk) { return HZ.Report.summarize(ayTx(mk), D.monthLabel(mk)); }
 
-/** Ekranda açık olan ay. Varsayılan: bugünün maaşının ait olduğu ay.
-    9 Eylül'de maaş 31 Ağustos'ta yattığı için açık ay AĞUSTOS'tur. */
+/** Ekranda açık olan ay. Varsayılan: içinde bulunulan TAKVİM ayı (19 Kasım → Kasım).
+    Önceden "bugünün maaşının ayı" açılıyordu; maaş 30 Ekim'de yattığı için Kasım boyunca
+    Ekim görünüyordu ve "Bugün" düğmesi de Ekim'e götürüyordu — Hasan bunu hata olarak bildirdi
+    (19.11.2026). Ayın içeriği değişmedi: kart harcaması ekstre ayına, nakit/banka takvim ayına. */
 function aktifAy() {
-  var simdi = HZ.SalaryPeriod.forDate(D.todayISO(), maasGunu()).key;
-  return D.addMonthKey(simdi, S.monthOffset);
+  return D.addMonthKey(D.monthKey(D.todayISO()), S.monthOffset);
 }
 function ayAdi(mk) { return D.monthLabel(mk); }
 function ayKisa(mk) { return D.monthLabel(mk).split(' ')[0]; }
@@ -2081,7 +2082,8 @@ async function exportJson() {
 }
 function importJsonModal() {
   modal('Yedekten yükle',
-    '<div class="warnbox crit"><span>⚠</span><div>Yedek, buradaki verinin <b>yerine geçer</b>: yedekte olmayan kartlar, tanımlar ve işlemler silinir.</div></div>' +
+    '<div class="warnbox crit"><span>⚠</span><div>Yedek, buradaki verinin <b>yerine geçer</b>: yedekte olmayan kartlar, tanımlar ve işlemler silinir.' +
+      '<br><b>Kayıt ekleme dosyası</b> (ör. Claude\'un hazırladığı banka hesap hareketleri) ise mevcut verine eklenir; hiçbir şey silinmez, aynı kayıt iki kez eklenmez.</div></div>' +
     '<label class="f" style="margin-top:12px"><span>Yedek dosyası</span><input type="file" id="jsonFile" accept=".json,.txt"></label>' +
     '<label class="f" style="margin-top:12px"><span>ya da JSON içeriğini yapıştır</span><textarea id="jsonIn" rows="10" style="font-family:var(--mono);font-size:11px" placeholder="{ ... }"></textarea></label>',
     '<button class="btn" data-act="closeModal">Vazgeç</button><button class="btn pri" data-act="importJsonRun">Yükle</button>');
@@ -2094,6 +2096,7 @@ async function importJsonRun() {
   var oncekiKapanis = HZ.kapanisTarihi(S.config);
   var d;
   try { d = JSON.parse(val('jsonIn')); } catch (e) { toast('Geçersiz JSON'); return; }
+  if (d && d.tur === 'hz-ekle') { await kayitEkle(d); return; }
   if (!d || (!d.buckets && !d.cards && !d.config)) { toast('Bu dosya bir H&Z Finans yedeği değil'); return; }
   /* Yedek, mevcut verinin YERİNE geçer: yedekte olmayan kartlar, tanımlar ve aylar silinir. */
   /* Listeler yazmadan ÖNCE kopyalanır: bulutta her yazmadan sonra gelen anlık görüntü
@@ -2254,6 +2257,59 @@ function kapanisSerit() {
     '<div style="flex:1"><b class="xt">' + D.trFmt(t) + ' itibarıyla tüm borçlar kapatıldı</b>' +
     'Kart borçları bu tarihten sonra sıfırdan başlıyor. Yeni harcamaları gir ya da ekstreni yükle.</div>' +
     '<button class="btn sm" data-act="ekstre">Ekstre yükle</button></div>';
+}
+
+/* --- kayıt ekleme dosyası (birleştirerek içe aktarma) --------------
+   { tur: 'hz-ekle', aciklama, kategoriler: [...], islemler: [ {id, kind, date, amount, ...} ] }
+   Banka hesap hareketleri gibi dışarıda hazırlanan kayıtlar mevcut veriye EKLENİR.
+   · Aynı id zaten varsa atlanır (dosyayı ikinci kez yüklemek bir şey eklemez).
+   · Aynı tür, aynı tutar, ±1 gün ve aynı kart/yöntemde elle girilmiş bir kayıt varsa o da
+     atlanır ve listede gösterilir (elle girdiğin kira ikinci kez yazılmaz).            */
+async function kayitEkle(d) {
+  var mevcut = S.transactions, idler = {};
+  mevcut.forEach(function (t) { idler[t.id] = 1; });
+  var gecerli = function (t) {
+    return t && t.id && /^\d{4}-\d{2}-\d{2}$/.test(t.date || '') && Number.isInteger(t.amount) && t.amount > 0 &&
+      [KIND.EXPENSE, KIND.INCOME, KIND.CARD_PAYMENT, KIND.REFUND].indexOf(t.kind) >= 0;
+  };
+  var eklenen = [], atlanan = [], hatali = 0, simdi = new Date().toISOString();
+  (d.islemler || []).forEach(function (t) {
+    if (!gecerli(t)) { hatali++; return; }
+    if (idler[t.id]) { atlanan.push({ t: t, neden: 'daha önce eklenmiş' }); return; }
+    var es = mevcut.concat(eklenen).filter(function (x) {
+      return x.kind === t.kind && x.amount === t.amount && Math.abs(D.serial(x.date) - D.serial(t.date)) <= 1 &&
+        (x.cardId || null) === (t.cardId || null) && (t.kind !== KIND.EXPENSE || x.method === t.method) &&
+        x.kaynak !== t.kaynak;
+    })[0];
+    if (es) { atlanan.push({ t: t, neden: 'benzer kayıt var: ' + (es.note || es.category || '') + ' · ' + D.trFmt(es.date) }); return; }
+    if (t.cardId && !cardById(t.cardId)) { t = Object.assign({}, t); delete t.cardId; }
+    eklenen.push(Object.assign({ createdAt: simdi }, t));
+  });
+  var yeniKat = (d.kategoriler || []).filter(function (k) { return (S.config.categories || []).indexOf(k) < 0; });
+  if (yeniKat.length) { S.config.categories = (S.config.categories || DEFAULT_CATS.slice()).concat(yeniKat); await Store.saveConfig(); }
+  var dokunulan = {};
+  eklenen.forEach(function (t) {
+    var mk = D.monthKey(t.date);
+    S.buckets[mk] = (S.buckets[mk] || []).concat([t]); dokunulan[mk] = 1;
+  });
+  await Store.putBuckets(Object.keys(dokunulan));
+  closeModal(); renderAll();
+  var gelir = eklenen.filter(function (t) { return t.kind === KIND.INCOME; }).reduce(function (a, t) { return a + t.amount; }, 0);
+  var gider = eklenen.filter(function (t) { return t.kind === KIND.EXPENSE; }).reduce(function (a, t) { return a + t.amount; }, 0);
+  var odeme = eklenen.filter(function (t) { return t.kind === KIND.CARD_PAYMENT; }).reduce(function (a, t) { return a + t.amount; }, 0);
+  modal('Kayıtlar eklendi',
+    (d.aciklama ? '<div class="muted" style="margin-bottom:10px">' + esc(d.aciklama) + '</div>' : '') +
+    '<dl class="dl"><dt>Eklenen kayıt</dt><dd>' + eklenen.length + '</dd>' +
+      '<dt>Gelir</dt><dd style="color:var(--ok)">' + money(gelir) + '</dd>' +
+      '<dt>Gider</dt><dd>' + money(gider) + '</dd>' +
+      '<dt>Kart ödemesi</dt><dd>' + money(odeme) + '</dd></dl>' +
+    (atlanan.length ? '<div class="lbl" style="margin:14px 0 4px">Atlanan (' + atlanan.length + ')</div>' +
+      atlanan.map(function (a) {
+        return '<div class="rowline"><div class="grow">' + D.trFmt(a.t.date) + ' · ' + esc(a.t.note || a.t.category || '') +
+          '<div class="muted">' + esc(a.neden) + '</div></div><div class="num">' + money(a.t.amount) + '</div></div>';
+      }).join('') : '') +
+    (hatali ? '<div class="warnbox" style="margin-top:12px"><span>⚠</span><div>' + hatali + ' satır okunamadı, eklenmedi.</div></div>' : ''),
+    '<button class="btn pri" data-act="closeModal">Tamam</button>');
 }
 
 /* --- mükerrer kayıt temizliği ---------------------------------------
