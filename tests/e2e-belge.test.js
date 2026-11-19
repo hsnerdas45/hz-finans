@@ -161,6 +161,10 @@ const SEED = { v: 3, config: { people: [{ name: 'Ahmet', salaryDay: 31 }, { name
   ok('aynı ekran görüntüsü ikinci kez: 0 yeni', (await E(() => __T.EX.res.counts.YENI)) === 0 && (await E(() => __T.EX.res.counts.VAR)) === 3);
   await E(() => __T.handleAct('closeModal', {}));
 
+  console.log('\n— kayda özel ay —');
+  ok('ay alanı olan Ekim kaydı Kasım ayında sayılır', await E(() => __T.txAy({ date: '2026-10-21', kind: 'INCOME', method: 'BANK_ACCOUNT', amount: 1, ay: '2026-11' })) === '2026-11'
+    && await E(() => __T.txAy({ date: '2026-10-21', kind: 'INCOME', method: 'BANK_ACCOUNT', amount: 1 })) === '2026-10');
+
   console.log('\n— telefon —');
   const tel = await br.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const tp = await tel.newPage(); await tp.addInitScript(s => localStorage.setItem('hz_finans_v3', s), JSON.stringify(SEED));
