@@ -39,7 +39,9 @@ const alt = sc => govde + '\n' + sc.join('\n') + '\n</body>\n</html>\n';
 const fb = ['app', 'auth', 'firestore'].map(m =>
   '<script src="https://www.gstatic.com/firebasejs/' + FIREBASE + '/firebase-' + m + '-compat.js"></script>');
 W('index.html', ust(true) + alt(fb.concat(['<script src="firebase-config.js"></script>'],
-  CEKIRDEK.concat(['firebase-giris.js', 'app.js']).map(f => '<script src="src/' + f + '"></script>'))));
+  /* ?v=içerik özeti: dosya değişince telefon ve tarayıcı eski kopyayı önbellekten açmasın */
+  CEKIRDEK.concat(['firebase-giris.js', 'app.js']).map(f => '<script src="src/' + f + '?v=' +
+    require('crypto').createHash('md5').update(R('src/' + f)).digest('hex').slice(0, 8) + '"></script>'))));
 W('manifest.webmanifest', JSON.stringify({
   name: 'H&Z Finans', short_name: 'H&Z Finans', lang: 'tr', start_url: './', scope: './', display: 'standalone',
   background_color: '#FAF7F2', theme_color: '#B07A1E',
